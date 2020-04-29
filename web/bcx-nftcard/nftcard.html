@@ -1,0 +1,356 @@
+<!DOCTYPE html>
+<html>
+    <head>
+        <meta charset="utf-8">
+        <meta http-equiv="Access-Control-Allow-Origin" content="*">
+        <link rel = "stylesheet" type = "text/css" href = "https://stackpath.bootstrapcdn.com/bootstrap/2.3.2/css/bootstrap.min.css" />
+        <style>
+            .fadeIn {
+                -webkit-animation-name: fadeIn;
+                animation-name: fadeIn;
+            }
+        </style>
+    </head>
+    <body>
+		<div class="container">
+			<div class="page-header row">
+			  <h1 class="span4">CocosBCX <small>卡密演示</small></h1>
+			  <div class="span8">
+				  <p style="visibility:hidden;text-align:right;" id="account-div">欢迎, <span id="account-id">cocosbcx</span></p>
+				  <p class="alert alert-error"><span id="show-msg">正在加载 CocosPay插件，请稍后...</span></p>
+			  </div>
+			</div>
+
+			<div class="container-fluid">
+			  <div class="row-fluid">
+			    <div class="span3">
+			      <!--Sidebar content-->
+			      <ul class="nav nav-list">
+					  <li class="active"><a href="#" onclick="showMarketplace(this);">卡密市场</a></li>
+					  <li><a href="#" onclick="showMySpace(this);">我的卡密</a></li>
+				  </ul>
+			    </div>
+			    <div class="span9">
+				    <div id="marketplace-container">
+					    <div class="alert alert-info" id="card-list-empty-tip">内容为空</div>
+						<!--Body content-->
+						<ul class="thumbnails" id="card-container"></ul>
+				    </div>
+				    <div id="myspace-container" style="display: none;">
+						<table class="table table-condensed" id="my-card-list">
+						  <!--<caption>我的卡密列表</caption>-->
+						  <thead>
+						    <tr>
+						      <th>卡密名称</th>
+						      <th>价格</th>
+						      <th>兑换码</th>
+						      <th>购买日期</th>
+						      <th>操作</th>
+						    </tr>
+						  </thead>
+						  <tbody></tbody>
+						</table>
+				    </div>
+			    </div>
+			  </div>
+			</div>
+		</div>
+		
+        <script src="./assets/bcx.min.js?v=7"></script>
+        <script type="text/javascript" src="./FELib/jquery-1.8.3.min.js" charset="utf-8"></script>
+        <script type="text/javascript" src="./FELib/jsonview/jquery.jsonview.min.js" charset="utf-8"></script>       
+        <script type="text/javascript" src="https://stackpath.bootstrapcdn.com/bootstrap/2.3.2/js/bootstrap.min.js" charset="utf-8"></script>
+        
+        <script>
+			var bcx;
+			var accountName;
+			var worldview = ["cardworld"];
+			//var bcx_seller_id = "1.2.5";
+			//var bcx_seller_id = "1.2.16";
+			//var bcx_seller_account = "kokko";
+			//var bcx_seller_account = "nicotest";
+			var bcx_seller_account = "kokko313";
+			var nft_list = [];
+			var nft_map = {};
+						
+			function initBCX() {
+				var _configParams={
+                    // default_ws_node:"wss://node.cocos-terminal.com/wss",
+                    default_ws_node:"wss://api.cocosbcx.net",
+                    // default_ws_node:"wss://test.cocosbcx.net",
+					//default_ws_node:"ws://192.168.90.46:41346",
+                    ws_node_list:[
+                       {url:"wss://api.cocosbcx.net",name:"Cocos - Terminal"},
+                       //{url:"wss://test.cocosbcx.net",name:"Test"},
+                       //{url:"wss://node.cocos-terminal.com/wss",name:"Cocos - Terminal"},
+                     ],
+                     networks:[
+                        {
+                            core_asset:"COCOS",
+                            // chain_id:"1ae3653a3105800f5722c5bda2b55530d0e9e8654314e2f3dc6d2b010da641c5" 
+                            chain_id:"6057d856c398875cac2650fe33caef3d5f6b403d184c5154abbff526ec1143c4" 
+                        }
+                     ], 
+                    //  faucet_url:"http://test-faucet.cocosbcx.net",
+                     faucet_url:"https://faucet.cocosbcx.net",
+
+                     auto_reconnect:true,
+                     real_sub:true,
+                     check_cached_nodes_data:false
+                    //app_keys:["5HxzZncKDjx7NEaEv989Huh7yYY7RukcJLKBDQztXAmZYCHWPgd"]
+                };
+
+                bcx=new BCX(_configParams);
+                //可以不用初始化，直接调用，API会自动判断是否初始化，热没有初始化则自动初始化
+                bcx.init({
+                    real_sub:true,
+                    subscribeToRpcConnectionStatusCallback:res=>{
+                        console.info("subscribeToRpcConnectionStatusCallback res",res);
+                    }
+                }).then(res=>{
+                    console.info("init res",res);
+                    console.info("this.$bcx.getAccountInfo()",bcx.getAccountInfo());
+                    if(res.code==1){
+                       console.log("BCX init res:",res);
+                    }
+                });
+			}
+			
+			var timer, timeout=2500;
+			var tryTimes = 0;
+			function checkCocosPay() {
+				tryTimes++;
+				console.log("Checking CocosPay for the " + tryTimes + " time(s)");
+				console.log("window.BcxWeb:" + window.BcxWeb);
+				
+				if (window.BcxWeb) {
+					bcx=window.BcxWeb;
+					showTip("CocosPay 插件加载成功");
+					
+					queryAccountNHAssets();
+					//getAccountInfo();
+				} else {
+					if (tryTimes > 20) {
+						showTip("未检测到 CocosPay, 请先安装 CocosPay");
+						timeout=5000;
+					}
+					
+					timer = setTimeout("checkCocosPay()", timeout);
+				}
+			}
+			checkCocosPay();
+			
+			function getAccountInfo(okcall) {
+				window.BcxWeb.getAccountInfo().then(res => {
+					if (res.locked) {
+						var message = "CocosPay 账号已锁定，请先进行解锁";
+						console.log(message);
+						showTip(message);
+					} else {
+						accountName = res.account_name;
+						var mesasge = "登录的账号为: " + accountName;
+						console.log(mesasge);
+						
+						showTip(mesasge);
+						showUser(accountName);
+						
+						clearInterval(timer);
+						
+						if (okcall) okcall();
+					}
+				});
+			}
+			
+			function queryAccountNHAssets(){
+				showTip("正在加载卡密市场下的商品列表...");
+				
+		        window.BcxWeb.queryAccountNHAssets({
+		            account:bcx_seller_account,
+		            worldview,
+		            page:1,
+		            pageSize:1000,
+		            callback:function(res){
+			            console.info('res',res);
+			            showTip("共加载了卡密市场中" + (res.total ? res.total : 0) + "条商品信息。");
+			            
+		                if (res.total > 0) {
+			                $("#card-list-empty-tip").hide();
+			                nft_list = res.data;
+			                
+			                for (var i=0; i<nft_list.length; i++) {
+				                //console.log(nft.base_describe);
+				                nft = nft_list[i];
+				                var card = JSON.parse(nft.base_describe);
+				                nft.basic_describe = card;
+				                nft_map[nft.id] = nft;
+				                
+				                var htmlEle = '<li class="span4"><div class="thumbnail">';
+				                htmlEle += ' <img src="'+card.icon+'" style="width: 250px; height: 250px;"/>';
+				                htmlEle += '<div class="caption">';
+				                htmlEle += '<h3>'+card.name+'</h3>';
+				                htmlEle += '<p>'+card.introduction+'</p>';
+				                htmlEle += '<p><small>'+card.memo+'</small></p>';
+				                htmlEle += '<p class="text-right "><strong class="text-info" style="float:left"> $'+card.price_amount+' ' +card.price_symbol+'</strong>';
+				                htmlEle += '<a href="#" onclick="buy('+i+')" class="btn btn-primary">购买</a>';
+				                htmlEle += '</p>';
+				                htmlEle += '</div>';
+				                htmlEle += '</div></li>';
+				                $("#card-container").append(htmlEle);
+				            }
+		                } else {
+			                $("#card-list-empty-tip").show();
+		                }
+		            }
+		        })
+		    };
+		    
+		    function buy(idx) {
+			    getAccountInfo(()=>{
+				    var nft = nft_list[idx];
+				    var card = nft.basic_describe
+	                let trxData={
+	                    fromAccount:accountName,
+	                    toAccount:bcx_seller_account,
+	                    amount:card.price_amount,
+	                    assetId:card.price_symbol,
+	                    memo: 'CW#' + $.now() + '#' + nft.id,
+	                    isPropose:false,
+	                    isEncryption:false
+	                };
+	                console.log(trxData);
+	                
+	                window.BcxWeb.transferAsset(trxData).then(res=>{
+	                    console.info('transferAsset res',res);
+	                    if(res.code == 1) {
+		                    alert('购买成功，请到”我的卡密“页面中接收兑换码。');
+	                    } else {
+		                    alert(res.message ? res.message : '购买失败，请确保你的账号里有足够的余额。');
+	                    }
+	                })
+			    });
+		    }
+		    
+		    var accountOperationFetched = false;
+		    function subscribeAccountOperations(startId, size) {
+			    getAccountInfo(()=>{
+				    if (!accountOperationFetched) {
+					    showTip("正在获取我的卡密列表...");
+					    
+				    	window.BcxWeb.queryAccountOperations({
+		                	account: accountName,
+							startId: startId ? startId : "1.11.0",
+							endId:"1.11.0",
+							limit:size ? size : 100,
+			            }).then(res=>{
+				            if(res.code==1){
+						        accountOperationFetched = true;
+						        //console.log(res.data);
+					            renderOps(res.data);
+				            }
+			            });
+			    	}
+			    	
+			    	window.BcxWeb.subscribeToAccountOperations({
+		                account: accountName,
+		                callback:function(res){
+		                    if(res.code==1){
+		                        //var operations=res.data.operations;
+		                        renderOps([res.data.operation], true);
+		                    }
+		                }
+	            	})
+				});
+
+		    }
+		    		    
+		    function showMarketplace(caller) {
+			    $(caller).parent().siblings().removeClass("active");
+			    $(caller).parent().addClass("active");
+			    
+			    $("#marketplace-container").show();
+			    $("#myspace-container").hide();
+		    }
+		    
+		    function showMySpace(caller) {
+			    $(caller).parent().siblings().removeClass("active");
+			    $(caller).parent().addClass("active");
+			    
+			    $("#marketplace-container").hide();
+			    $("#myspace-container").show();
+			    
+			    subscribeAccountOperations();
+		    }
+
+			function showTip(msg) {
+				$("#show-msg").html(msg);
+			}
+			
+			function showUser(name) {
+				if (name) {
+					$('#account-id').html(name);
+					$('#account-div').css('visibility','visible');
+				} else {
+					$('#account-div').css('visibility','hiden');
+				}
+			}
+			
+			var history_operations={}
+			function renderOps(operations,prepend=false) {
+				var count = 0
+				operations.forEach(function(item,index)
+				{
+					if (history_operations[item.id]) {
+						return;
+					}
+					
+                    if (item.type=="transfer" && item.result.type!="error_result" 
+                    	&& item.parse_operations.from == bcx_seller_account 
+                    	&& item.parse_operations.to == accountName) 
+                    {
+	                    var memo=item.raw_data.memo||false;
+	                    if (!memo || memo[0] == 0) return; 
+	                    
+	                    count++;
+	                    history_operations[item.id] = item;
+	                    console.log(item)
+	                    
+	                    var mycard = '<tr><td>XXXXXXXX</td><td>XXXXXXXX</td><td>XXXXXXXX</td><td>'+item.date;
+	                    mycard += '</td><td onclick="reveal(this,'+"'"+item.id+"'"+')"><button class="btn btn-primary">查看</button></td></tr>';
+						if (prepend) {
+							$("#my-card-list tbody").prepend(mycard);
+						} else {
+							$("#my-card-list tbody").append(mycard);
+						}
+                    }
+                });
+                showTip("共加载 "+count+" 条卡密信息");
+            }
+            
+            function reveal(caller,opid) {
+	            var item=history_operations[opid];
+	            if (!item) alert("条目不存在");
+	            
+	            var memo=item.raw_data.memo
+	            bcx.decodeOneMemo(memo[1]).then(res=>{
+		            if (res.code == 1) {
+			            var memo_text = res.data.text
+			            var segments = memo_text.split("#");
+			            if (segments && segments.length >= 3 && segments[0] == "CW") {
+				            var nft_id = segments[2];
+							var nft = nft_map[nft_id];
+							
+							td_elements = $(caller).siblings()
+							$(td_elements[0]).text(nft.basic_describe.name)
+							$(td_elements[1]).text(nft.basic_describe.price_amount+ ' ' + nft.basic_describe.price_symbol)
+							$(td_elements[2]).text(segments[3] ? segments[3] : "testtesttest")
+                		} else {
+	                		alert("该条记录中不存在有效的卡密信息");
+                		}
+		            }
+					console.info("decodeOneMemo res",res);
+				})
+            }
+			
+        </script>
+    </body>
+</html>
