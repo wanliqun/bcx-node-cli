@@ -299,8 +299,10 @@
 				var count = 0
 				operations.forEach(function(item,index)
 				{
-					if (history_operations[item.id]) {
-						return;
+					if (!history_operations[item.id]) {
+						history_operations[item.id] = item;
+					} else {
+						return
 					}
 					
                     if (item.type=="transfer" && item.result.type!="error_result" 
@@ -311,7 +313,6 @@
 	                    if (!memo || memo[0] == 0) return; 
 	                    
 	                    count++;
-	                    history_operations[item.id] = item;
 	                    console.log(item)
 	                    
 	                    var mycard = '<tr><td>XXXXXXXX</td><td>XXXXXXXX</td><td>XXXXXXXX</td><td>'+item.date;
